@@ -160,7 +160,8 @@ sudo reboot
 
 **Ошибка при перезагрузке:** `VFS: Unable to mount root fs on unknown-block(0,0)` **Причина:** При установке mainline-ядра для него автоматически не сгенерировался файл начальной файловой системы RAM (`initrd.img-7.1.2-070102-generic`). Загрузчик выдал ошибку, так как при поиске образов (см. вывод `update-grub` выше) для нового ядра `vmlinuz-7.1.2` отсутствовал соответствующий `initrd`.
 
-![bf487c20b73f539994d1e210625844c8.png](../../_resources/bf487c20b73f539994d1e210625844c8.png)
+<img width="734" height="417" alt="Снимок экрана 2026-07-04 125201" src="https://github.com/user-attachments/assets/16f948d1-82ec-4a3b-84ab-6bb6838bb00a" />
+
 
 ### Решение проблемы:
 
