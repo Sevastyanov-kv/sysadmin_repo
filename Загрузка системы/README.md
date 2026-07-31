@@ -65,7 +65,8 @@ kirills@otus:~$ sudo reboot
 
 Для обоих способов виртуальную машину нужно перезагрузить и на экране меню GRUB нажать `e` для редактирования пункта загрузки.
 
-> ![4a8e9d4da68637298b587255ec59ab89.png](../../_resources/4a8e9d4da68637298b587255ec59ab89.png)
+> <img width="871" height="757" alt="image" src="https://github.com/user-attachments/assets/b9f4c993-ac2b-4f47-ac77-9f40662bb2cb" />
+
 
 ### Способ 1. `init=/bin/bash`
 
@@ -95,7 +96,8 @@ mount | grep root
 
 Загружается меню восстановления (`recovery menu`).
 
-> ![b520702414c43a39986574a9a45a7d58.png](../../_resources/b520702414c43a39986574a9a45a7d58.png)
+> <img width="723" height="478" alt="image" src="https://github.com/user-attachments/assets/81451340-86c9-4644-bd91-3015db2b4c5c" />
+
 
 **Шаг 3.** Сначала выбираю пункт **network** — это поднимает сеть и, что важно, перемонтирует корневую ФС в режим read/write.
 
@@ -134,10 +136,12 @@ kirills@otus:~$
 
 **Шаг 3.** Правлю `/boot/grub/grub.cfg` — везде заменяю старое имя VG на новое. Важный нюанс: в путях устройств `/dev/mapper/...` дефис внутри имени VG в файле экранируется и записывается как двойной дефис (`ubuntu--vg` → `ubuntu--otus`), это нужно учитывать при замене, иначе загрузчик не найдёт логический том.
 
-![a7f45c933a33d2e2b444db3b885dbb89.png](../../_resources/a7f45c933a33d2e2b444db3b885dbb89.png)
+<img width="1531" height="79" alt="image" src="https://github.com/user-attachments/assets/d322ca8b-43a9-4532-af23-0e28608d297c" />
+
 
 После перезагрузки виртуальная машина не стартует:  
-<br/>![fe6ab0e7e44ce9714b1f06061f2b40a8.png](../../_resources/fe6ab0e7e44ce9714b1f06061f2b40a8.png)
+<img width="740" height="526" alt="image" src="https://github.com/user-attachments/assets/24add484-bd27-4d57-9a6e-57a5a35c9ad1" />
+
 
 Захожу в систему через загрузчик первым способом `init=/bin/bash` и ввожу следующие команды:
 
@@ -151,13 +155,16 @@ update-grub
 reboot
 ```
 
-<img src="../../_resources/61bbb8f2b4379013c9b9334c10405f06.png" alt="61bbb8f2b4379013c9b9334c10405f06.png" width="745" height="529" class="jop-noMdConv">
+<img width="762" height="541" alt="image" src="https://github.com/user-attachments/assets/4c189bc2-5d1f-40b4-8351-f367197a5311" />
 
-**<img src="../../_resources/9f8f7a4980734700892671abdcc3d96e.png" alt="9f8f7a4980734700892671abdcc3d96e.png" width="742" height="727" class="jop-noMdConv">**
+
+<img width="715" height="701" alt="image" src="https://github.com/user-attachments/assets/b3b16d62-ffdd-418c-8bbf-b60eb44cb458" />
+
 
 **Шаг 4.** Перезагружаюсь и проверяю, что система успешно стартовала с новым именем VG:
 
-![d899c0ab05faf5e33831705bd35a2140.png](../../_resources/d899c0ab05faf5e33831705bd35a2140.png)
+<img width="795" height="88" alt="image" src="https://github.com/user-attachments/assets/0daded34-d82d-4dd4-8b2c-b5bcf060d014" />
+
 
 Переименование прошло успешно, система загружается штатно.
 
