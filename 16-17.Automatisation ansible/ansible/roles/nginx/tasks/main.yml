@@ -1,0 +1,35 @@
+---
+- name: NGINX | Install NGINX (apt)
+  apt:
+    name: "{{ nginx_package }}"
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+  tags:
+    - nginx-install
+
+- name: NGINX | Install NGINX (yum)
+  yum:
+    name: "{{ nginx_package }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags:
+    - nginx-install
+
+- name: NGINX | Create NGINX config file from template
+  template:
+    src: templates/nginx.conf.j2
+    dest: "{{ nginx_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart nginx
+  tags:
+    - nginx-configuration
+
+- name: NGINX | Enable NGINX service in systemd
+  systemd:
+    name: nginx
+    enabled: yes
+  tags:
+    - nginx-service
