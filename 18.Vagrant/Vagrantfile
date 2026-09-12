@@ -1,0 +1,46 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+
+  # Память ВМ — 1024 МБ
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 1024
+  end
+
+  # Проброс порта: гостевой 80 -> хостовой 8080
+  config.vm.network "forwarded_port", guest: 80, host: 8080
+
+  # Два виртуальных диска по 1 ГБ
+  # (sda - системный, sdb - служебный диск VirtualBox 10M,
+  #  наши два диска - sdc и sdd)
+  config.vm.disk :disk, size: "1GB", name: "disk1"
+  config.vm.disk :disk, size: "1GB", name: "disk2"
+
+  # Провижининг: ставим nginx, форматируем диски, монтируем, прописываем в fstab
+  config.vm.provision "shell", inline: <<-SHELL
+    # Устанавливаем и запускаем nginx (для проверки проброса порта)
+    apt-get update -y
+    apt-get install -y nginx
+    systemctl enable nginx
+    systemctl restart nginx
+
+    # Форматируем диски в ext4
+    mkfs.ext4 -F /dev/sdc
+    mkfs.ext4 -F /dev/sdd
+
+    # Создаём точки монтирования
+    mkdir -p /mnt/disk1 /mnt/disk2
+
+    # Монтируем диски
+    mount /dev/sdc /mnt/disk1
+    mount /dev/sdd /mnt/disk2
+
+    # Добавляем записи в /etc/fstab для автомонтирования
+    echo "/dev/sdc  /mnt/disk1  ext4  defaults  0  2" >> /etc/fstab
+    echo "/dev/sdd  /mnt/disk2  ext4  defaults  0  2" >> /etc/fstab
+
+    df -h
+  SHELL
+end
