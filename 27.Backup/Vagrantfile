@@ -1,0 +1,61 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.box_check_update = false
+
+  # Хост — Windows: Ansible на нём не работает, поэтому используем ansible_local —
+  # Ansible ставится ВНУТРИ каждой ВМ и применяет плейбук к самой себе.
+  # Плейбук берётся из синхронизируемой папки /vagrant (корень проекта).
+  # 1) ставим ansible из репозитория Ubuntu (пакет "ansible" включает нужные коллекции)
+  config.vm.provision "install-ansible", type: "shell", inline: <<-SHELL
+    export DEBIAN_FRONTEND=noninteractive
+    command -v ansible-playbook >/dev/null || (apt-get update -qq && apt-get install -y -qq ansible)
+  SHELL
+
+  # 2) запускаем плейбук; на каждой ВМ выполняются только «её» play-блоки
+  config.vm.provision "borg-playbook", type: "ansible_local" do |ansible|
+    ansible.install  = false
+    ansible.playbook = "ansible/playbook.yml"
+    ansible.compatibility_mode = "2.0"
+    ansible.extra_vars = { ansible_python_interpreter: "/usr/bin/python3" }
+  end
+
+  # ---------- Сервер бэкапов ----------
+  config.vm.define "backup_server" do |srv|
+    srv.vm.hostname = "backup-server"
+    srv.vm.network "private_network", ip: "192.168.11.160"
+
+    srv.vm.provider "virtualbox" do |vb|
+      vb.name   = "backup_server"
+      vb.memory = 1024
+      vb.cpus   = 1
+
+      # Дополнительный диск 2 GB для /var/backup
+      disk = File.join(File.dirname(__FILE__), ".vagrant", "backup_disk.vdi")
+      unless File.exist?(disk)
+        vb.customize ["createhd", "--filename", disk, "--size", 2048]
+      end
+      # В боксе ubuntu/jammy64 контроллер называется "SCSI";
+      # порты 0 и 1 заняты системным диском и cloud-init диском
+      vb.customize ["storageattach", :id,
+                    "--storagectl", "SCSI",
+                    "--port", 2, "--device", 0,
+                    "--type", "hdd", "--medium", disk]
+    end
+  end
+
+  # ---------- Клиент ----------
+  config.vm.define "client" do |cl|
+    cl.vm.hostname = "client"
+    cl.vm.network "private_network", ip: "192.168.11.150"
+
+    cl.vm.provider "virtualbox" do |vb|
+      vb.name   = "client"
+      vb.memory = 1024
+      vb.cpus   = 1
+    end
+
+  end
+end

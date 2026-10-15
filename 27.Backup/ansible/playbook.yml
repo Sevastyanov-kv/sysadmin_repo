@@ -1,0 +1,195 @@
+---
+# Playbook запускается через ansible_local на КАЖДОЙ ВМ отдельно (inventory = только эта ВМ),
+# поэтому play-блоки с hosts: backup_server / client выполняются каждый на своей машине.
+# Порядок: backup_server (создаёт ключ и кладёт его в /vagrant/keys) -> client (забирает ключ).
+
+# ============ 1. Общее: установка borgbackup ============
+- name: Установка borgbackup на все хосты
+  hosts: all
+  become: true
+  tasks:
+    - name: Установить borgbackup
+      ansible.builtin.apt:
+        name: borgbackup
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+# ============ 2. Сервер: пользователь, диск, /var/backup, ключ ============
+- name: Сервер бэкапов
+  hosts: backup_server
+  become: true
+  tasks:
+    - name: Создать пользователя borg
+      ansible.builtin.user:
+        name: "{{ borg_user }}"
+        shell: /bin/bash
+        create_home: true
+
+    - name: Проверить, что дополнительный диск существует
+      ansible.builtin.stat:
+        path: "{{ backup_disk }}"
+      register: disk_stat
+
+    - name: Остановиться, если диска нет
+      ansible.builtin.assert:
+        that: disk_stat.stat.exists and disk_stat.stat.isblk
+        fail_msg: "Диск {{ backup_disk }} не найден — проверьте lsblk и переменную backup_disk"
+
+    - name: Создать файловую систему ext4 на диске
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ backup_disk }}"
+
+    - name: Получить UUID файловой системы
+      ansible.builtin.command: blkid -s UUID -o value {{ backup_disk }}
+      register: disk_uuid
+      changed_when: false
+
+    - name: Создать точку монтирования
+      ansible.builtin.file:
+        path: "{{ borg_repo_path }}"
+        state: directory
+
+    - name: Смонтировать диск (запись в /etc/fstab по UUID)
+      ansible.posix.mount:
+        path: "{{ borg_repo_path }}"
+        src: "UUID={{ disk_uuid.stdout }}"
+        fstype: ext4
+        opts: defaults
+        state: mounted
+
+    - name: Выдать права пользователю borg на /var/backup
+      ansible.builtin.file:
+        path: "{{ borg_repo_path }}"
+        state: directory
+        owner: "{{ borg_user }}"
+        group: "{{ borg_user }}"
+        mode: "0750"
+
+    # --- SSH-ключ для клиента: создаётся на сервере, клиент заберёт его из /vagrant/keys ---
+    - name: Каталог /root/.ssh
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        mode: "0700"
+
+    - name: Сгенерировать SSH-ключ borg (если ещё нет)
+      ansible.builtin.command:
+        cmd: ssh-keygen -t ed25519 -N "" -C "borg@client" -f {{ borg_ssh_key }}
+        creates: "{{ borg_ssh_key }}"
+
+    - name: Положить пару ключей в общую папку Vagrant (/vagrant/keys)
+      ansible.builtin.shell: |
+        mkdir -p /vagrant/keys
+        cp -f {{ borg_ssh_key }} {{ borg_ssh_key }}.pub /vagrant/keys/
+      args:
+        creates: /vagrant/keys/{{ borg_ssh_key | basename }}
+
+    - name: Прочитать публичный ключ
+      ansible.builtin.slurp:
+        src: "{{ borg_ssh_key }}.pub"
+      register: borg_pubkey_raw
+
+    - name: Добавить ключ в authorized_keys пользователя borg с ограничениями
+      ansible.posix.authorized_key:
+        user: "{{ borg_user }}"
+        key: "{{ borg_pubkey_raw.content | b64decode | trim }}"
+        key_options: 'command="borg serve --restrict-to-path {{ borg_repo_path }}",restrict'
+
+# ============ 3. Клиент: ключ, репозиторий, скрипт, таймер, логи ============
+- name: Клиент — настройка бэкапа
+  hosts: client
+  become: true
+  handlers:
+    - name: Перезапустить rsyslog
+      ansible.builtin.systemd:
+        name: rsyslog
+        state: restarted
+
+  tasks:
+    - name: Проверить, что сервер уже выложил ключ
+      ansible.builtin.stat:
+        path: /vagrant/keys/{{ borg_ssh_key | basename }}
+      register: shared_key
+
+    - name: Остановиться, если ключа нет
+      ansible.builtin.assert:
+        that: shared_key.stat.exists
+        fail_msg: "Нет /vagrant/keys/{{ borg_ssh_key | basename }} — сначала должен отработать provisioning backup_server (vagrant provision backup_server)"
+
+    - name: Каталог /root/.ssh
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        mode: "0700"
+
+    - name: Установить приватный ключ borg из общей папки
+      ansible.builtin.copy:
+        src: /vagrant/keys/{{ borg_ssh_key | basename }}
+        dest: "{{ borg_ssh_key }}"
+        remote_src: true
+        mode: "0600"
+
+    - name: Каталог /etc/borg
+      ansible.builtin.file:
+        path: /etc/borg
+        state: directory
+        mode: "0700"
+
+    - name: Файл окружения (пароль, репозиторий, ssh-команда)
+      ansible.builtin.template:
+        src: templates/borg.env.j2
+        dest: /etc/borg/borg.env
+        mode: "0600"
+
+    - name: Инициализировать репозиторий (если ещё не создан)
+      ansible.builtin.shell: |
+        set -a; . /etc/borg/borg.env; set +a
+        if borg info "$BORG_REPO" >/dev/null 2>&1; then
+          echo EXISTS
+        else
+          borg init --encryption=repokey-blake2 "$BORG_REPO" && echo CREATED
+        fi
+      args:
+        executable: /bin/bash
+      register: borg_init
+      changed_when: "'CREATED' in borg_init.stdout"
+
+    - name: Скрипт бэкапа
+      ansible.builtin.template:
+        src: templates/borg-backup.sh.j2
+        dest: /usr/local/bin/borg-backup.sh
+        mode: "0750"
+
+    - name: systemd service
+      ansible.builtin.template:
+        src: templates/borg-backup.service.j2
+        dest: /etc/systemd/system/borg-backup.service
+        mode: "0644"
+
+    - name: systemd timer
+      ansible.builtin.template:
+        src: templates/borg-backup.timer.j2
+        dest: /etc/systemd/system/borg-backup.timer
+        mode: "0644"
+
+    - name: Правило rsyslog (лог в отдельный файл)
+      ansible.builtin.template:
+        src: templates/rsyslog-borg.conf.j2
+        dest: /etc/rsyslog.d/30-borg-backup.conf
+        mode: "0644"
+      notify: Перезапустить rsyslog
+
+    - name: Ротация лога
+      ansible.builtin.template:
+        src: templates/logrotate-borg.j2
+        dest: /etc/logrotate.d/borg-backup
+        mode: "0644"
+
+    - name: Включить и запустить таймер
+      ansible.builtin.systemd:
+        name: borg-backup.timer
+        enabled: true
+        state: started
+        daemon_reload: true

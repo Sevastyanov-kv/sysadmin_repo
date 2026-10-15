@@ -1,0 +1,22 @@
+---
+# --- Сервер бэкапов ---
+borg_server_ip: 192.168.11.160
+borg_user: borg
+borg_repo_path: /var/backup
+backup_disk: /dev/sdc            # второй диск (проверить: lsblk)
+
+# --- Клиент ---
+# Репозиторий — в подкаталоге: в корне только что созданной ext4 лежит lost+found,
+# а borg init отказывается создавать репозиторий в непустом каталоге
+borg_repo_dir: "{{ borg_repo_path }}/repo"
+borg_repo: "ssh://{{ borg_user }}@{{ borg_server_ip }}{{ borg_repo_dir }}"
+borg_passphrase: "Otus1234"      # для продакшена — ansible-vault!
+borg_ssh_key: /root/.ssh/borg_ed25519
+borg_backup_target: /etc
+borg_archive_prefix: "etc-"
+borg_tag: borg-backup
+
+# --- Политика хранения ---
+borg_keep_daily: 90              # последние ~3 месяца — по копии на каждый день
+borg_keep_monthly: 9             # ещё 9 месяцев — по последней копии месяца (итого год)
+borg_keep_within: "1H"           # ТОЛЬКО для демонстрации 5-минутных копий; пусто ("") = выключено

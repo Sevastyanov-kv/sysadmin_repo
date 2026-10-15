@@ -1,0 +1,14 @@
+# Managed by Ansible
+[Unit]
+Description=Run borg-backup every 5 minutes
+
+[Timer]
+# первый запуск — через минуту после старта таймера
+OnActiveSec=1min
+# далее — каждые 5 минут после предыдущего запуска сервиса
+OnUnitActiveSec=5min
+AccuracySec=1s
+Unit=borg-backup.service
+
+[Install]
+WantedBy=timers.target

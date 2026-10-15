@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Managed by Ansible
+# Скрипт резервного копирования {{ borg_backup_target }} на удалённый borg-репозиторий.
+# Переменные BORG_REPO, BORG_PASSPHRASE, BORG_RSH приходят из EnvironmentFile сервиса.
+
+set -uo pipefail
+
+TAG="{{ borg_tag }}"
+TARGET="{{ borg_backup_target }}"
+PREFIX="{{ borg_archive_prefix }}"
+
+{
+  rc=0
+
+  echo "==== START backup ${TARGET} -> ${BORG_REPO} ===="
+
+  # 1. Создание архива; в имени — время снятия копии
+  borg create \
+      --stats --show-rc \
+      --compression lz4 \
+      "${BORG_REPO}::${PREFIX}{now:%Y-%m-%d_%H:%M:%S}" \
+      "${TARGET}" || rc=$?
+
+  # 2. Очистка старых копий по политике хранения
+  echo "---- prune ----"
+  borg prune \
+      --stats --show-rc \
+      --prefix "${PREFIX}" \
+{% if borg_keep_within %}
+      --keep-within {{ borg_keep_within }} \
+{% endif %}
+      --keep-daily {{ borg_keep_daily }} \
+      --keep-monthly {{ borg_keep_monthly }} \
+      "${BORG_REPO}" || rc=$?
+
+  # 3. Лёгкая проверка: только последний архив
+  echo "---- check ----"
+  borg check --archives-only --last 1 --show-rc "${BORG_REPO}" || rc=$?
+
+  echo "==== END backup, итоговый код: ${rc} ===="
+  exit "${rc}"
+} 2>&1 | logger -t "${TAG}"
+
+exit "${PIPESTATUS[0]}"

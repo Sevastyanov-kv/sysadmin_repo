@@ -1,0 +1,11 @@
+# Managed by Ansible
+[Unit]
+Description=Borg backup of {{ borg_backup_target }} to {{ borg_server_ip }}
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/borg/borg.env
+ExecStart=/usr/local/bin/borg-backup.sh
+Nice=10

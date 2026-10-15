@@ -1,0 +1,3 @@
+# Managed by Ansible
+# Сообщения с тегом borg-backup (из logger) — в отдельный файл
+if $programname == '{{ borg_tag }}' then /var/log/borg-backup.log
